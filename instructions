@@ -1,0 +1,84 @@
+#For Emma 
+source /N/slate/ealamb/miniconda3/bin/activate
+
+#---------------------STEP 1: Making JUM Environment----------------------------
+#Create a new enviromnent for JUM 
+conda create -n jum
+conda activate jum
+
+#Download required softwares 
+conda install -c bioconda samtools=1.3.1
+conda install -c bioconda bedtools=2.26.0
+conda install -c bioconda star
+conda install -c bioconda r-base
+conda install -c bioconda bioconductor-dexseq
+
+#Install Perl with required modules -- Array::Utils and Statistics::Descriptive
+wget -O- http://cpanmin.us | perl - -l ~/perl5 App::cpanminus local::lib
+
+cpanm Array::Utils 
+cpanm Statistics::Descriptive
+
+#Check if all required softwares are installed 
+conda list
+
+#make jum directory 
+mkdir jum
+cd jum
+
+#Open R studio 4.2.1 (has to be 4.2.X or up)
+$ R
+> if (!require("BiocManager", quietly = TRUE))
+> install.packages("BiocManager")
+> BiocManager::install(version = "3.16")
+> BiocManager::install("DEXSeq")
+
+#Download JUM package from here (https://github.com/qqwang-berkeley/JUM/releases)
+#I downloaded JUM_3.0.0.tar.gz to desktop 
+#In Mac terminal 
+
+scp /Users/emmalamb/Desktop/JUM_3.0.0.tar ealamb@quartz.uits.iu.edu:/N/slate/ealamb/jum
+
+cd /N/slate/ealamb/jum
+tar -xf JUM_3.0.0.tar
+
+#Copy sequencing read fastq files from HundleyLab project space to the jum directory
+cd /N/project/HundleyLab/GSF2183
+scp GSF2183* /N/slate/ealamb/jum
+
+#---------------------STEP 2: Read Alignment----------------------------
+
+# Move genome and annotation file to your workspace or assign variables
+ASSEMBLY='ftp://ftp.wormbase.org/pub/wormbase/releases/WS275/species/c_elegans/PRJNA13758/c_elegans.PRJNA13758.WS275.genomic.fa.gz'
+ANNOTATION='ftp://ftp.wormbase.org/pub/wormbase/releases/WS275/species/c_elegans/PRJNA13758/c_elegans.PRJNA13758.WS275.canonical_geneset.gtf.gz'
+
+
+#Make a directory to store the genome files
+mkdir -p genome/index
+
+#Download and unpack the genome assembly.
+curl $ASSEMBLY | gunzip > ./genome/assembly.fasta
+
+# Download and unpack the genome annotation.
+curl $ANNOTATION | gunzip > ./genome/annotation.gtf
+
+# Create the STAR genome index
+STAR --runThreadN 3 --runMode genomeGenerate --genomeDir genome/index --genomeFastaFiles genome/assembly.fasta --sjdbGTFfile genome/annotation.gtf --sjdbOverhang 99
+
+# 1st pass mapping and copy selected STAR outputs from the 1st mapping to a folder named as 1st_SJ. (THIS STEP TAKES A VERY LONG TIME)
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix ctrl_1 --readFilesIn GSF2183-WT-rep-1_S1_R1_001.fastq --outSJfilterReads Unique
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix ctrl_2 --readFilesIn GSF2183-WT-rep-2_S2_R1_001.fastq --outSJfilterReads Unique
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix ctrl_3 --readFilesIn GSF2183-WT-rep-3_S3_R1_001.fastq --outSJfilterReads Unique
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix treat_1 --readFilesIn GSF2183-adr-1-rep-1_S7_R1_001.fastq --outSJfilterReads Unique
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix treat_2 --readFilesIn GSF2183-adr-1-rep-2_S8_R1_001.fastq --outSJfilterReads Unique
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix treat_3 --readFilesIn GSF2183-adr-1-rep-3_S9_R1_001.fastq --outSJfilterReads Unique
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix treat_4 --readFilesIn GSF2183-adr-2-rep-1_S4_R1_001.fastq --outSJfilterReads Unique
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix treat_5 --readFilesIn GSF2183-adr-2-rep-2_S5_R1_001.fastq --outSJfilterReads Unique
+STAR --runThreadN 3 --genomeDir genome/index --outFileNamePrefix treat_6 --readFilesIn GSF2183-adr-2-rep-3_S6_R1_001.fastq --outSJfilterReads Unique
+
+mkdir 1st_SJ
+rm *Aligned.out.sam
+mv ctrl* 1st_SJ
+mv treat* 1st_SJ
+
+
